@@ -1,0 +1,62 @@
+name: Run AI Notifier
+
+on:
+  schedule:
+    # 10:00 PM IST every day. GitHub Actions cron uses UTC.
+    - cron: "30 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  notify:
+    if: ${{ github.event_name != 'schedule' || vars.ENABLE_SCHEDULED_RUN != 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run notifier
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash' }}
+          GEMINI_BASE_URL: ${{ vars.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta' }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          STATE_PATH: state/state.json
+          ENABLE_BENGALURU_NEWS: ${{ vars.ENABLE_BENGALURU_NEWS || 'true' }}
+          ENABLE_DEAL_ALERTS: ${{ vars.ENABLE_DEAL_ALERTS || 'false' }}
+          ENABLE_GAME_ALERTS: ${{ vars.ENABLE_GAME_ALERTS || 'true' }}
+          ENABLE_GAME_STORE_APIS: ${{ vars.ENABLE_GAME_STORE_APIS || 'true' }}
+          ENABLE_HACKER_NEWS: ${{ vars.ENABLE_HACKER_NEWS || 'false' }}
+          MAX_EVENT_AGE_DAYS: ${{ vars.MAX_EVENT_AGE_DAYS || '7' }}
+          STEAM_COUNTRY: ${{ vars.STEAM_COUNTRY || 'IN' }}
+          STEAM_LANGUAGE: ${{ vars.STEAM_LANGUAGE || 'english' }}
+          STEAM_MIN_DISCOUNT_PERCENT: ${{ vars.STEAM_MIN_DISCOUNT_PERCENT || '60' }}
+          STEAM_MAX_SPECIALS: ${{ vars.STEAM_MAX_SPECIALS || '20' }}
+          STEAM_MAX_NEW_RELEASES: ${{ vars.STEAM_MAX_NEW_RELEASES || '10' }}
+          EPIC_COUNTRY: ${{ vars.EPIC_COUNTRY || 'IN' }}
+          EPIC_LOCALE: ${{ vars.EPIC_LOCALE || 'en-US' }}
+          EPIC_MAX_ITEMS: ${{ vars.EPIC_MAX_ITEMS || '10' }}
+          RSS_LIMIT_PER_SOURCE: ${{ vars.RSS_LIMIT_PER_SOURCE || '5' }}
+          RSS_TIMEOUT_SECONDS: ${{ vars.RSS_TIMEOUT_SECONDS || '10' }}
+        run: python agent.py
+
+      - name: Persist state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/state.json
+          git diff --cached --quiet || git commit -m "Update notifier state"
+          git push
