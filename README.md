@@ -120,6 +120,15 @@ Optional repository variables:
 - `EPIC_COUNTRY`
 - `RSS_LIMIT_PER_SOURCE`
 
+To avoid manually copy-pasting values, install GitHub CLI, authenticate once, then sync local `.env` values:
+
+```powershell
+gh auth login
+.\scripts\sync_github_env.ps1
+```
+
+The script uploads `GEMINI_API_KEY`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, and `EMAIL_TO` as GitHub Actions secrets. Other `.env` entries are uploaded as repository variables.
+
 The workflow in `.github/workflows/run.yml` commits `state/state.json` after successful runs so duplicate notifications are avoided on ephemeral runners.
 
 The scheduled workflow runs nightly at 10:00 PM IST. GitHub Actions cron is written in UTC, so the workflow uses `30 16 * * *`.
