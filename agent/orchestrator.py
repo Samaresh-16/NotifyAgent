@@ -5,6 +5,7 @@ from typing import Protocol, Sequence
 
 from agent.memory import JsonMemory
 from agent.models import AgentRunResult, Event, NotificationDecision
+from notifications.email_renderer import EmailRenderer
 
 
 NotificationItem = tuple[Event, NotificationDecision]
@@ -23,7 +24,7 @@ class LlmDecisionClient(Protocol):
 
 
 class NotificationSender(Protocol):
-    def send(self, subject: str, body: str) -> None:
+    def send(self, subject: str, body: str | None = None, html: str | None = None) -> None:
         ...
 
 
@@ -68,9 +69,13 @@ class Orchestrator:
                 notification_items.append((event, decision))
 
         if notification_items:
+            # Render HTML digest and send with plain-text fallback
+            renderer = EmailRenderer()
+            html = renderer.render(notification_items)
             self.notification_sender.send(
                 subject=self._format_digest_subject(notification_items),
                 body=self._format_digest_body(notification_items),
+                html=html,
             )
             for event, _decision in notification_items:
                 self.memory.mark_notified(event.fingerprint)
