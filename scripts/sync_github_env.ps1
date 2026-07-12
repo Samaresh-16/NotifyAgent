@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $EnvPath)) {
 }
 
 $secretNames = @(
-    "GEMINI_API_KEY",
+    "NVIDIA_API_KEY",
     "EMAIL_ADDRESS",
     "EMAIL_PASSWORD",
     "EMAIL_TO"

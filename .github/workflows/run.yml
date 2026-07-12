@@ -26,9 +26,11 @@ jobs:
 
       - name: Run notifier
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash' }}
-          GEMINI_BASE_URL: ${{ vars.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta' }}
+          # NVIDIA API Key (required)
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning' }}
+          NVIDIA_BASE_URL: ${{ vars.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1' }}
+          NVIDIA_TIMEOUT_SECONDS: ${{ vars.NVIDIA_TIMEOUT_SECONDS || '60' }}
           SMTP_SERVER: ${{ vars.SMTP_SERVER || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
@@ -51,6 +53,8 @@ jobs:
           EPIC_MAX_ITEMS: ${{ vars.EPIC_MAX_ITEMS || '10' }}
           RSS_LIMIT_PER_SOURCE: ${{ vars.RSS_LIMIT_PER_SOURCE || '5' }}
           RSS_TIMEOUT_SECONDS: ${{ vars.RSS_TIMEOUT_SECONDS || '10' }}
+          NEWS_LIMIT: ${{ vars.NEWS_LIMIT || '10' }}
+          NEWS_TIMEOUT_SECONDS: ${{ vars.NEWS_TIMEOUT_SECONDS || '10' }}
         run: python agent.py
 
       - name: Persist state
