@@ -35,6 +35,11 @@ class AppConfig:
     epic_locale: str
     epic_max_items: int
     max_event_age_days: int
+    # NVIDIA fallback configuration (optional)
+    nvidia_api_key: str = ""
+    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_timeout_seconds: float = 60.0
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -73,6 +78,13 @@ class AppConfig:
             epic_locale=os.getenv("EPIC_LOCALE", "en-US"),
             epic_max_items=int(os.getenv("EPIC_MAX_ITEMS", "10")),
             max_event_age_days=int(os.getenv("MAX_EVENT_AGE_DAYS", "7")),
+            # NVIDIA fallback configuration (optional)
+            nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
+            nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+            nvidia_base_url=os.getenv(
+                "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"
+            ),
+            nvidia_timeout_seconds=float(os.getenv("NVIDIA_TIMEOUT_SECONDS", "60")),
         )
 
     def require_runtime_secrets(self) -> None:

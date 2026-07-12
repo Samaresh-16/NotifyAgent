@@ -22,6 +22,14 @@ class LlmDecisionClient(Protocol):
     def decide(self, event: Event) -> NotificationDecision:
         ...
 
+    def decide_batch(self, events: list[Event]) -> list[NotificationDecision]:
+        """
+        Decide on multiple events in a single call.
+        Default implementation calls decide() for each event.
+        Implementations can override for true batching.
+        """
+        return [self.decide(event) for event in events]
+
 
 class NotificationSender(Protocol):
     def send(self, subject: str, body: str | None = None, html: str | None = None) -> None:
@@ -36,9 +44,11 @@ class Orchestrator:
         notification_sender: NotificationSender,
         memory: JsonMemory,
         max_event_age: timedelta | None = timedelta(days=7),
+        fallback_llm_client: LlmDecisionClient | None = None,
     ) -> None:
         self.tools = tools
         self.llm_client = llm_client
+        self.fallback_llm_client = fallback_llm_client
         self.notification_sender = notification_sender
         self.memory = memory
         self.max_event_age = max_event_age
@@ -61,6 +71,8 @@ class Orchestrator:
         decision_errors = 0
         notification_errors = 0
 
+        # Collect events that need decisions (not too old and not already notified)
+        events_to_decide = []
         for event in unique_events:
             if self._is_too_old(event):
                 skipped_old += 1
@@ -71,18 +83,38 @@ class Orchestrator:
                 skipped_duplicates += 1
                 continue
 
-            considered += 1
-            try:
-                decision = self.llm_client.decide(event)
-            except Exception as error:
-                decision_errors += 1
-                self._warn(
-                    f"Decision failed for event {event.source}/{event.id}; skipping: {error}"
-                )
-                continue
+            events_to_decide.append(event)
 
-            if decision.notify:
-                notification_items.append((event, decision))
+        # Get decisions for all events
+        considered = len(events_to_decide)
+        if events_to_decide:
+            # Try batch processing with primary LLM client (NVIDIA) first
+            try:
+                decisions = self.llm_client.decide_batch(events_to_decide)
+                # Process decisions
+                for event, decision in zip(events_to_decide, decisions):
+                    if decision.notify:
+                        notification_items.append((event, decision))
+            except Exception as batch_error:
+                decision_errors += len(events_to_decide)  # Count all as errors if batch fails
+                self._warn(
+                    f"Batch decision failed for {len(events_to_decide)} events (NVIDIA); falling back to individual decisions: {batch_error}"
+                )
+
+                # Fall back to individual decisions with fallback client if available (Gemini), otherwise primary (NVIDIA)
+                fallback_client = self.fallback_llm_client or self.llm_client
+                client_name = "fallback (Gemini)" if self.fallback_llm_client else "primary (NVIDIA)"
+
+                for event in events_to_decide:
+                    try:
+                        decision = fallback_client.decide(event)
+                        if decision.notify:
+                            notification_items.append((event, decision))
+                    except Exception as individual_error:
+                        decision_errors += 1
+                        self._warn(
+                            f"Individual {client_name} decision failed for event {event.source}/{event.id}; skipping: {individual_error}"
+                        )
 
         if notification_items:
             try:

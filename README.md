@@ -10,7 +10,7 @@ The MVP collects game sale/free-game/release alerts plus Bengaluru-focused local
 GitHub Actions cron
   -> python agent.py
   -> tools collect events
-  -> LLM decides with structured output
+  -> LLM decides with structured output (Gemini with NVIDIA fallback)
   -> email sender sends one digest when needed
   -> JSON memory persists notified event hashes
 ```
@@ -57,6 +57,12 @@ EPIC_LOCALE=en-US
 EPIC_MAX_ITEMS=10
 RSS_LIMIT_PER_SOURCE=5
 RSS_TIMEOUT_SECONDS=10
+
+# NVIDIA FALLBACK CONFIGURATION (set when you have an NVIDIA API key for fallback)
+# NVIDIA_API_KEY=your-nvidia-api-key-here
+# NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+# NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+# NVIDIA_TIMEOUT_SECONDS=60
 ```
 
 Run locally:
@@ -76,7 +82,25 @@ GEMINI_MODEL=gemini-3.5-flash
 
 The Gemini client calls the Google Generative Language API `interactions` endpoint directly with `httpx` and asks Gemini to return JSON that matches the `NotificationDecision` Pydantic schema.
 
-## Current Sources
+## NVIDIA Fallback (Optional)
+
+To reduce API calls and avoid rate limits, the agent now batches multiple events into a single LLM request. If the primary Gemini API fails (e.g., due to rate limits), it can automatically fall back to an NVIDIA model.
+
+Configure the fallback by adding these environment variables:
+
+```bash
+NVIDIA_API_KEY=your-nvidia-api-key-here
+NVIDIA_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_TIMEOUT_SECONDS=60
+```
+
+When configured, the agent will:
+1. Attempt to process events in batches using NVIDIA (reducing API calls)
+2. If NVIDIA fails, fall back to processing events individually with the Gemini model
+3. If both fail, skip the events for that run
+
+## Current Services
 
 Enabled by default:
 
@@ -104,6 +128,7 @@ Add repository secrets:
 - `EMAIL_ADDRESS`
 - `EMAIL_PASSWORD`
 - `EMAIL_TO`
+- `NVIDIA_API_KEY` (optional, for primary batch processing)
 
 Optional repository variables:
 
@@ -119,6 +144,9 @@ Optional repository variables:
 - `STEAM_MIN_DISCOUNT_PERCENT`
 - `EPIC_COUNTRY`
 - `RSS_LIMIT_PER_SOURCE`
+- `NVIDIA_MODEL` (optional)
+- `NVIDIA_BASE_URL` (optional)
+- `NVIDIA_TIMEOUT_SECONDS` (optional)
 
 To avoid manually copy-pasting values, install GitHub CLI, authenticate once, then sync local `.env` values:
 
@@ -127,7 +155,7 @@ gh auth login
 .\scripts\sync_github_env.ps1
 ```
 
-The script uploads `GEMINI_API_KEY`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, and `EMAIL_TO` as GitHub Actions secrets. Other `.env` entries are uploaded as repository variables.
+The script uploads `GEMINI_API_KEY`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_TO`, and `NVIDIA_API_KEY` (if set) as GitHub Actions secrets. Other `.env` entries are uploaded as repository variables.
 
 The workflow in `.github/workflows/run.yml` commits `state/state.json` after successful runs so duplicate notifications are avoided on ephemeral runners.
 
