@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import sys
 from typing import Any
 
 from agent.models import Event
@@ -49,29 +50,32 @@ class SteamStoreTool:
         events: list[Event] = []
 
         for item in items:
-            discount = int(item.get("discount_percent") or 0)
-            final_price = _steam_price(item.get("final_price"), item.get("currency"))
-            original_price = _steam_price(item.get("original_price"), item.get("currency"))
-            is_free = discount >= 100 or item.get("final_price") == 0
+            try:
+                discount = int(item.get("discount_percent") or 0)
+                final_price = _steam_price(item.get("final_price"), item.get("currency"))
+                original_price = _steam_price(item.get("original_price"), item.get("currency"))
+                is_free = discount >= 100 or item.get("final_price") == 0
 
-            if not is_free and discount < self.min_discount_percent:
-                continue
+                if not is_free and discount < self.min_discount_percent:
+                    continue
 
-            app_id = str(item.get("id") or item.get("appid") or item.get("name"))
-            title = str(item.get("name") or "Steam deal")
-            deal_label = "Free on Steam" if is_free else f"{discount}% off on Steam"
-            summary = f"{deal_label}. Current price: {final_price}; original price: {original_price}."
+                app_id = str(item.get("id") or item.get("appid") or item.get("name"))
+                title = str(item.get("name") or "Steam deal")
+                deal_label = "Free on Steam" if is_free else f"{discount}% off on Steam"
+                summary = f"{deal_label}. Current price: {final_price}; original price: {original_price}."
 
-            events.append(
-                Event(
-                    id=f"steam-special-{app_id}-{discount}-{item.get('final_price')}",
-                    source=self.name,
-                    title=f"{title} - {deal_label}",
-                    summary=summary,
-                    url=f"https://store.steampowered.com/app/{app_id}",
-                    timestamp=datetime.now(timezone.utc),
+                events.append(
+                    Event(
+                        id=f"steam-special-{app_id}-{discount}-{item.get('final_price')}",
+                        source=self.name,
+                        title=f"{title} - {deal_label}",
+                        summary=summary,
+                        url=f"https://store.steampowered.com/app/{app_id}",
+                        timestamp=datetime.now(timezone.utc),
+                    )
                 )
-            )
+            except Exception as error:
+                print(f"[WARN] Could not parse Steam special item; skipping: {error}", file=sys.stderr)
 
         return events[: self.max_specials]
 
@@ -80,20 +84,23 @@ class SteamStoreTool:
         events: list[Event] = []
 
         for item in items[: self.max_new_releases]:
-            app_id = str(item.get("id") or item.get("appid") or item.get("name"))
-            title = str(item.get("name") or "Steam new release")
-            price = _steam_price(item.get("final_price"), item.get("currency"))
+            try:
+                app_id = str(item.get("id") or item.get("appid") or item.get("name"))
+                title = str(item.get("name") or "Steam new release")
+                price = _steam_price(item.get("final_price"), item.get("currency"))
 
-            events.append(
-                Event(
-                    id=f"steam-new-release-{app_id}",
-                    source=self.name,
-                    title=f"{title} - new on Steam",
-                    summary=f"Steam new release. Current price: {price}.",
-                    url=f"https://store.steampowered.com/app/{app_id}",
-                    timestamp=datetime.now(timezone.utc),
+                events.append(
+                    Event(
+                        id=f"steam-new-release-{app_id}",
+                        source=self.name,
+                        title=f"{title} - new on Steam",
+                        summary=f"Steam new release. Current price: {price}.",
+                        url=f"https://store.steampowered.com/app/{app_id}",
+                        timestamp=datetime.now(timezone.utc),
+                    )
                 )
-            )
+            except Exception as error:
+                print(f"[WARN] Could not parse Steam new-release item; skipping: {error}", file=sys.stderr)
 
         return events
 
@@ -137,7 +144,15 @@ class EpicGamesStoreTool:
             .get("elements", [])
         )
 
-        events = [event for item in elements if (event := self._event_from_item(item))]
+        events: list[Event] = []
+        for item in elements:
+            try:
+                event = self._event_from_item(item)
+            except Exception as error:
+                print(f"[WARN] Could not parse Epic item; skipping: {error}", file=sys.stderr)
+                continue
+            if event:
+                events.append(event)
         return events[: self.max_items]
 
     def _event_from_item(self, item: dict[str, Any]) -> Event | None:

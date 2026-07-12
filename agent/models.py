@@ -52,3 +52,7 @@ class AgentRunResult(BaseModel):
     notified: int
     skipped_duplicates: int
     skipped_old: int
+    tool_errors: int = 0
+    decision_errors: int = 0
+    notification_errors: int = 0
+    memory_errors: int = 0

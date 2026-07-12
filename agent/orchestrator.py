@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import sys
 from typing import Protocol, Sequence
 
 from agent.memory import JsonMemory
 from agent.models import AgentRunResult, Event, NotificationDecision
-from notifications.email_renderer import EmailRenderer
 
 
 NotificationItem = tuple[Event, NotificationDecision]
@@ -44,7 +44,13 @@ class Orchestrator:
         self.max_event_age = max_event_age
 
     def run(self) -> AgentRunResult:
-        self.memory.load()
+        memory_errors = 0
+        try:
+            self.memory.load()
+        except Exception as error:
+            memory_errors += 1
+            self._warn(f"Could not load memory; continuing with empty state: {error}")
+
         events = self._collect_events()
         unique_events, in_run_duplicates = self._deduplicate(events)
 
@@ -52,6 +58,8 @@ class Orchestrator:
         notification_items: list[NotificationItem] = []
         skipped_duplicates = in_run_duplicates
         skipped_old = 0
+        decision_errors = 0
+        notification_errors = 0
 
         for event in unique_events:
             if self._is_too_old(event):
@@ -64,35 +72,61 @@ class Orchestrator:
                 continue
 
             considered += 1
-            decision = self.llm_client.decide(event)
+            try:
+                decision = self.llm_client.decide(event)
+            except Exception as error:
+                decision_errors += 1
+                self._warn(
+                    f"Decision failed for event {event.source}/{event.id}; skipping: {error}"
+                )
+                continue
+
             if decision.notify:
                 notification_items.append((event, decision))
 
         if notification_items:
-            # Render HTML digest and send with plain-text fallback
-            renderer = EmailRenderer()
-            html = renderer.render(notification_items)
-            self.notification_sender.send(
-                subject=self._format_digest_subject(notification_items),
-                body=self._format_digest_body(notification_items),
-                html=html,
-            )
-            for event, _decision in notification_items:
-                self.memory.mark_notified(event.fingerprint)
+            try:
+                html = self._render_html_digest(notification_items)
+                self.notification_sender.send(
+                    subject=self._format_digest_subject(notification_items),
+                    body=self._format_digest_body(notification_items),
+                    html=html,
+                )
+            except Exception as error:
+                notification_errors += 1
+                self._warn(f"Notification send failed; events will be retried later: {error}")
+            else:
+                for event, _decision in notification_items:
+                    self.memory.mark_notified(event.fingerprint)
 
-        self.memory.save()
+        try:
+            self.memory.save()
+        except Exception as error:
+            memory_errors += 1
+            self._warn(f"Could not save memory: {error}")
+
         return AgentRunResult(
             collected=len(events),
             considered=considered,
-            notified=len(notification_items),
+            notified=0 if notification_errors else len(notification_items),
             skipped_duplicates=skipped_duplicates,
             skipped_old=skipped_old,
+            tool_errors=getattr(self, "_last_tool_errors", 0),
+            decision_errors=decision_errors,
+            notification_errors=notification_errors,
+            memory_errors=memory_errors,
         )
 
     def _collect_events(self) -> list[Event]:
         events: list[Event] = []
+        tool_errors = 0
         for tool in self.tools:
-            events.extend(tool.collect())
+            try:
+                events.extend(tool.collect())
+            except Exception as error:
+                tool_errors += 1
+                self._warn(f"Tool {tool.name} failed; continuing without it: {error}")
+        self._last_tool_errors = tool_errors
         return events
 
     def _deduplicate(self, events: Sequence[Event]) -> tuple[list[Event], int]:
@@ -153,3 +187,15 @@ class Orchestrator:
             )
 
         return "\n".join(lines).rstrip() + "\n"
+
+    def _render_html_digest(self, items: Sequence[NotificationItem]) -> str | None:
+        try:
+            from notifications.email_renderer import EmailRenderer
+
+            return EmailRenderer().render(items)
+        except Exception as error:
+            self._warn(f"HTML email rendering failed; sending plain text only: {error}")
+            return None
+
+    def _warn(self, message: str) -> None:
+        print(f"[WARN] {message}", file=sys.stderr)

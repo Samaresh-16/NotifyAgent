@@ -42,8 +42,29 @@ class FakeSender:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
 
-    def send(self, subject: str, body: str) -> None:
-        self.sent.append((subject, body))
+    def send(self, subject: str, body: str | None = None, html: str | None = None) -> None:
+        self.sent.append((subject, body or ""))
+
+
+class FailingTool:
+    name = "failing"
+
+    def collect(self) -> list[Event]:
+        raise RuntimeError("tool unavailable")
+
+
+class FailingLlm:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def decide(self, event: Event) -> NotificationDecision:
+        self.calls += 1
+        raise RuntimeError("llm unavailable")
+
+
+class FailingSender:
+    def send(self, subject: str, body: str | None = None, html: str | None = None) -> None:
+        raise RuntimeError("smtp unavailable")
 
 
 def make_event(event_id: str = "1") -> Event:
@@ -200,3 +221,64 @@ def test_orchestrator_skips_events_older_than_max_age(tmp_path: Path) -> None:
     assert len(sender.sent) == 1
     assert "Fresh game sale" in sender.sent[0][1]
     assert "Old game sale" not in sender.sent[0][1]
+
+
+def test_orchestrator_continues_when_a_tool_fails(tmp_path: Path) -> None:
+    event = make_event()
+    llm = FakeLlm(
+        NotificationDecision(
+            notify=True,
+            priority=8,
+            subject="Worth knowing",
+            body="This matters.",
+            reason="It is relevant and timely.",
+        )
+    )
+    sender = FakeSender()
+    memory = JsonMemory(tmp_path / "state.json")
+
+    result = Orchestrator([FailingTool(), FakeTool([event])], llm, sender, memory).run()
+
+    assert result.collected == 1
+    assert result.considered == 1
+    assert result.notified == 1
+    assert result.tool_errors == 1
+    assert len(sender.sent) == 1
+
+
+def test_orchestrator_skips_event_when_llm_fails(tmp_path: Path) -> None:
+    event = make_event()
+    llm = FailingLlm()
+    sender = FakeSender()
+    memory = JsonMemory(tmp_path / "state.json")
+
+    result = Orchestrator([FakeTool([event])], llm, sender, memory).run()
+
+    assert result.collected == 1
+    assert result.considered == 1
+    assert result.notified == 0
+    assert result.decision_errors == 1
+    assert sender.sent == []
+
+
+def test_orchestrator_does_not_mark_notified_when_email_fails(tmp_path: Path) -> None:
+    event = make_event()
+    llm = FakeLlm(
+        NotificationDecision(
+            notify=True,
+            priority=8,
+            subject="Worth knowing",
+            body="This matters.",
+            reason="It is relevant and timely.",
+        )
+    )
+    memory = JsonMemory(tmp_path / "state.json")
+
+    result = Orchestrator([FakeTool([event])], llm, FailingSender(), memory).run()
+
+    assert result.notified == 0
+    assert result.notification_errors == 1
+
+    reloaded = JsonMemory(tmp_path / "state.json")
+    reloaded.load()
+    assert not reloaded.has_notified(event.fingerprint)

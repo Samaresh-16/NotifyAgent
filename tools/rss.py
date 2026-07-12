@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+import sys
 from typing import Iterable
 from urllib.parse import quote_plus
 from xml.etree import ElementTree
@@ -34,14 +35,20 @@ class RssTool:
 
         events: list[Event] = []
         for source in self.sources:
-            response = httpx.get(source.url, timeout=self.timeout_seconds)
-            response.raise_for_status()
-            events.extend(
-                self._events_from_xml(
-                    xml=response.text,
-                    source_name=source.name,
-                )[: self.limit_per_source]
-            )
+            try:
+                response = httpx.get(source.url, timeout=self.timeout_seconds)
+                response.raise_for_status()
+                events.extend(
+                    self._events_from_xml(
+                        xml=response.text,
+                        source_name=source.name,
+                    )[: self.limit_per_source]
+                )
+            except Exception as error:
+                print(
+                    f"[WARN] RSS source {source.name} failed; continuing: {error}",
+                    file=sys.stderr,
+                )
         return events
 
     def _events_from_xml(self, *, xml: str, source_name: str) -> list[Event]:
