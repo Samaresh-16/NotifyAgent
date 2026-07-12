@@ -216,9 +216,7 @@ class NVIDIADecisionClient:
         # Prioritize endpoints known to work with NVIDIA's API and have valid SSL certificates
         urls_to_try = [
             # User's configured endpoint (should be tried first)
-            f"{self.base_url}/chat/completions",
-            # NVIDIA's official AI endpoint (most likely to work based on documentation)
-            "https://ai.api.nvidia.com/v1/chat/completions",
+            f"{self.base_url}/chat/completions"
         ]
         # Remove duplicates while preserving order
         seen = set()
@@ -319,9 +317,7 @@ class NVIDIADecisionClient:
         # Try multiple endpoints in order of preference
         urls_to_try = [
             # User's configured endpoint (should be tried first)
-            f"{self.base_url}/chat/completions",
-            # NVIDIA's official AI endpoint (most likely to work based on documentation)
-            "https://ai.api.nvidia.com/v1/chat/completions",
+            f"{self.base_url}/chat/completions"
         ]
         # Remove duplicates while preserving order
         seen = set()
