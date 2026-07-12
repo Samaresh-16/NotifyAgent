@@ -7,10 +7,6 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class AppConfig:
-    gemini_api_key: str
-    gemini_model: str
-    gemini_base_url: str
-    gemini_timeout_seconds: float
     smtp_server: str
     smtp_port: int
     email_address: str
@@ -35,7 +31,7 @@ class AppConfig:
     epic_locale: str
     epic_max_items: int
     max_event_age_days: int
-    # NVIDIA fallback configuration (optional)
+    # NVIDIA configuration (required for LLM)
     nvidia_api_key: str = ""
     nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -47,13 +43,6 @@ class AppConfig:
         email_address = os.getenv("EMAIL_ADDRESS", "")
         email_to = os.getenv("EMAIL_TO") or email_address
         return cls(
-            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
-            gemini_base_url=os.getenv(
-                "GEMINI_BASE_URL",
-                "https://generativelanguage.googleapis.com/v1beta",
-            ),
-            gemini_timeout_seconds=float(os.getenv("GEMINI_TIMEOUT_SECONDS", "60")),
             smtp_server=os.getenv("SMTP_SERVER", "smtp.gmail.com"),
             smtp_port=int(os.getenv("SMTP_PORT", "587")),
             email_address=email_address,
@@ -78,7 +67,7 @@ class AppConfig:
             epic_locale=os.getenv("EPIC_LOCALE", "en-US"),
             epic_max_items=int(os.getenv("EPIC_MAX_ITEMS", "10")),
             max_event_age_days=int(os.getenv("MAX_EVENT_AGE_DAYS", "7")),
-            # NVIDIA fallback configuration (optional)
+            # NVIDIA configuration (required for LLM)
             nvidia_api_key=os.getenv("NVIDIA_API_KEY", ""),
             nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
             nvidia_base_url=os.getenv(
@@ -91,10 +80,10 @@ class AppConfig:
         missing = [
             name
             for name, value in {
-                "GEMINI_API_KEY": self.gemini_api_key,
                 "EMAIL_ADDRESS": self.email_address,
                 "EMAIL_PASSWORD": self.email_password,
                 "EMAIL_TO": self.email_to,
+                "NVIDIA_API_KEY": self.nvidia_api_key,
             }.items()
             if not value
         ]

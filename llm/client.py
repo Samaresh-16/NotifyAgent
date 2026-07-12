@@ -294,9 +294,105 @@ class NVIDIADecisionClient:
         raise RuntimeError("Failed to call NVIDIA API after trying all endpoints")
 
     def decide_batch(self, events: list[Event]) -> list[NotificationDecision]:
-        # Note: This batch method is now used as PRIMARY (first attempt)
-        # We fall back to individual decisions if the API doesn't support true batching
-        return [self.decide(event) for event in events]
+        import httpx
+        import json
+
+        # Create a combined prompt for all events
+        event_prompts = []
+        for i, event in enumerate(events):
+            event_prompts.append(f"Event {i+1}:\n{event_decision_prompt(event.to_prompt_payload())}")
+
+        combined_prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"Evaluate each of the following events for an autonomous notification agent.\n"
+            f"For each event, provide a notification decision in the same JSON format.\n"
+            f"Return a JSON array with one decision object per event, in the same order as the events provided.\n\n"
+            + "\n\n---\n\n".join(event_prompts)
+        )
+
+        # Create a schema for an array of decisions
+        batch_schema = {
+            "type": "array",
+            "items": NotificationDecision.model_json_schema()
+        }
+
+        # Try multiple endpoints in order of preference
+        urls_to_try = [
+            # User's configured endpoint (should be tried first)
+            f"{self.base_url}/chat/completions",
+            # NVIDIA's official AI endpoint (most likely to work based on documentation)
+            "https://ai.api.nvidia.com/v1/chat/completions",
+        ]
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_urls = []
+        for url in urls_to_try:
+            if url not in seen:
+                seen.add(url)
+                unique_urls.append(url)
+
+        last_error = None
+        for url in unique_urls:
+            try:
+                response = httpx.post(
+                    url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.api_key}",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "user", "content": combined_prompt}
+                        ],
+                        "temperature": 0.1,
+                        "response_format": {
+                            "type": "json_object",
+                            "schema": batch_schema
+                        },
+                    },
+                    timeout=self.timeout_seconds,
+                )
+                response.raise_for_status()
+                response_data = response.json()
+
+                # Extract the array of decisions
+                decisions_json = self._extract_text(response_data)
+                decisions_list = json.loads(decisions_json)
+
+                # Validate each decision
+                return [NotificationDecision.model_validate(decision) for decision in decisions_list]
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404 or (500 <= e.response.status_code < 600):
+                    last_error = e
+                    continue  # Try next URL
+                else:
+                    # For non-404/5xx errors, don't try other URLs
+                    raise
+            except Exception as e:
+                # For validation errors or other issues, try to create fallback decisions
+                # rather than immediately failing, to reduce noise and improve reliability
+                if "validation" in str(e).lower():
+                    # Create conservative fallback decisions when validation fails
+                    return [
+                        NotificationDecision(
+                            notify=False,
+                            priority=1,
+                            subject=f"Notification parsing issue for {event.source}",
+                            body=f"Could not properly assess event: {event.title}",
+                            reason="LLM response validation failed - using safe default"
+                        )
+                        for event in events
+                    ]
+                else:
+                    # For non-validation errors (network, etc.), don't try other URLs
+                    raise
+
+        # If we exhausted all URLs and still have a 404 error, raise it
+        if last_error:
+            raise last_error
+        # This shouldn't happen, but just in case
+        raise RuntimeError("Failed to call NVIDIA API after trying all endpoints")
 
     def _extract_text(self, payload: dict[str, Any]) -> str:
         """Extract text from Gemini/NVIDIA response payload."""

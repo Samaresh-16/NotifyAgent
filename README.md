@@ -97,8 +97,8 @@ NVIDIA_TIMEOUT_SECONDS=60
 
 When configured, the agent will:
 1. Attempt to process events in batches using NVIDIA (reducing API calls)
-2. If NVIDIA fails, fall back to processing events individually with the Gemini model
-3. If both fail, skip the events for that run
+2. If NVIDIA batch processing fails, fall back to processing events individually with NVIDIA
+3. If both approaches fail, skip the events for that run
 
 ## Current Services
 
@@ -124,16 +124,13 @@ These are news/deal-signal sources, not direct product price trackers. Direct pr
 
 Add repository secrets:
 
-- `GEMINI_API_KEY`
 - `EMAIL_ADDRESS`
 - `EMAIL_PASSWORD`
 - `EMAIL_TO`
-- `NVIDIA_API_KEY` (optional, for primary batch processing)
+- `NVIDIA_API_KEY` (required)
 
 Optional repository variables:
 
-- `GEMINI_MODEL`
-- `GEMINI_BASE_URL`
 - `ENABLE_BENGALURU_NEWS`
 - `ENABLE_DEAL_ALERTS`
 - `ENABLE_GAME_ALERTS`
@@ -141,9 +138,17 @@ Optional repository variables:
 - `ENABLE_HACKER_NEWS`
 - `MAX_EVENT_AGE_DAYS`
 - `STEAM_COUNTRY`
+- `STEAM_LANGUAGE`
 - `STEAM_MIN_DISCOUNT_PERCENT`
+- `STEAM_MAX_SPECIALS`
+- `STEAM_MAX_NEW_RELEASES`
 - `EPIC_COUNTRY`
+- `EPIC_LOCALE`
+- `EPIC_MAX_ITEMS`
 - `RSS_LIMIT_PER_SOURCE`
+- `RSS_TIMEOUT_SECONDS`
+- `NEWS_LIMIT`
+- `NEWS_TIMEOUT_SECONDS`
 - `NVIDIA_MODEL` (optional)
 - `NVIDIA_BASE_URL` (optional)
 - `NVIDIA_TIMEOUT_SECONDS` (optional)
@@ -155,7 +160,7 @@ gh auth login
 .\scripts\sync_github_env.ps1
 ```
 
-The script uploads `GEMINI_API_KEY`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_TO`, and `NVIDIA_API_KEY` (if set) as GitHub Actions secrets. Other `.env` entries are uploaded as repository variables.
+The script uploads `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_TO`, and `NVIDIA_API_KEY` as GitHub Actions secrets. Other `.env` entries are uploaded as repository variables.
 
 The workflow in `.github/workflows/run.yml` commits `state/state.json` after successful runs so duplicate notifications are avoided on ephemeral runners.
 

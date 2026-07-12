@@ -101,9 +101,9 @@ class Orchestrator:
                     f"Batch decision failed for {len(events_to_decide)} events (NVIDIA); falling back to individual decisions: {batch_error}"
                 )
 
-                # Fall back to individual decisions with fallback client if available (Gemini), otherwise primary (NVIDIA)
-                fallback_client = self.fallback_llm_client or self.llm_client
-                client_name = "fallback (Gemini)" if self.fallback_llm_client else "primary (NVIDIA)"
+                # Fall back to individual decisions with the same client (NVIDIA)
+                fallback_client = self.llm_client
+                client_name = "primary (NVIDIA)"
 
                 for event in events_to_decide:
                     try:

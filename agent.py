@@ -5,7 +5,7 @@ from datetime import timedelta
 from agent.config import AppConfig
 from agent.memory import JsonMemory
 from agent.orchestrator import Orchestrator
-from llm.client import GeminiDecisionClient, NVIDIADecisionClient
+from llm.client import NVIDIADecisionClient
 from notifications.email import SmtpEmailSender
 from tools.game_stores import EpicGamesStoreTool, SteamStoreTool
 from tools.news import HackerNewsTool
@@ -77,27 +77,20 @@ def main() -> None:
             )
         )
 
-    # Initialize primary LLM client (NVIDIA for batch decisions)
-    primary_llm_client = NVIDIADecisionClient(
+    # Initialize LLM client (NVIDIA for batch decisions with individual fallback)
+    if not config.nvidia_api_key:
+        raise RuntimeError("NVIDIA_API_KEY must be configured")
+
+    llm_client = NVIDIADecisionClient(
         api_key=config.nvidia_api_key,
         model=config.nvidia_model,
         base_url=config.nvidia_base_url,
         timeout_seconds=config.nvidia_timeout_seconds,
     )
 
-    # Initialize fallback LLM client (Gemini) if API key is provided
-    fallback_llm_client = None
-    if config.gemini_api_key:
-        fallback_llm_client = GeminiDecisionClient(
-            api_key=config.gemini_api_key,
-            model=config.gemini_model,
-            base_url=config.gemini_base_url,
-            timeout_seconds=config.gemini_timeout_seconds,
-        )
-
     orchestrator = Orchestrator(
         tools=tools,
-        llm_client=primary_llm_client,
+        llm_client=llm_client,
         notification_sender=SmtpEmailSender(
             smtp_server=config.smtp_server,
             smtp_port=config.smtp_port,
@@ -107,7 +100,7 @@ def main() -> None:
         ),
         memory=JsonMemory(config.state_path),
         max_event_age=timedelta(days=config.max_event_age_days),
-        fallback_llm_client=fallback_llm_client,
+        fallback_llm_client=None,
     )
     result = orchestrator.run()
     print(result.model_dump_json())
